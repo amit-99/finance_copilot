@@ -1,0 +1,55 @@
+### Python ###
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+ENV/
+env/
+
+# Distribution / packaging
+.Python
+dist/
+build/
+*.egg-info/
+*.egg
+
+### Django ###
+*.log
+*.pot
+*.pyc
+
+# Database files
+*.sqlite3
+
+# Django media/static files
+/media/
+/staticfiles/
+
+# Local settings (if you have custom settings for development)
+local_settings.py
+
+# Django migrations
+**/migrations/**
+!**/migrations/__init__.py
+
+### VS Code ###
+.vscode/
+
+### OS-specific ###
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+### Other ###
+*.bak
+*.tmp
+*.swp
+.idea/
+
+# dotenv files
+.env
