@@ -28,6 +28,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
+ALLOWED_PORT = "8000"  # or whatever port your development server runs on
 
 # Application definition
 
@@ -76,14 +77,14 @@ WSGI_APPLICATION = "finance_copilot.wsgi.application"
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'djongo',
-        'NAME': 'mydatabase',  # Replace with your MongoDB database name
-        'ENFORCE_SCHEMA': False,  # MongoDB is schema-less
-        'CLIENT': {
+    "default": {
+        "ENGINE": "djongo",
+        "NAME": "mydatabase",  # Replace with your MongoDB database name
+        "ENFORCE_SCHEMA": False,  # MongoDB is schema-less
+        "CLIENT": {
             # 'host': 'mongodb://localhost:27017',  # For local MongoDB
-            'host': 'mongodb+srv://abhujba:amit1999@cluster0.xrmpm.mongodb.net/?retryWrites=true&w=majority&appName=cluster0',  # For MongoDB Atlas
-        }
+            "host": "mongodb+srv://abhujba:amit1999@cluster0.xrmpm.mongodb.net/?retryWrites=true&w=majority&appName=cluster0",  # For MongoDB Atlas
+        },
     }
 }
 
