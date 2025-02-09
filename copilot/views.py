@@ -1,8 +1,13 @@
-from django.http import HttpResponse
+import io
+import json
+
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from PIL import Image
 
+from .services.gemini_api import GeminiService
 from .services.twilio_api import TwilioService
 
 SAMPLE_IMAGE_URL = "https://picsum.photos/200/300"
@@ -47,6 +52,38 @@ def whatsapp_webhook(request):
             content=TwilioService().create_response("Sorry, an error occurred"),
             content_type="text/xml",
         )
+
+
+@csrf_exempt
+def test_gemini(request):
+    """
+    Test Gemini API integration
+    GET: /gemini/test/ - Test text-only queries
+    POST: /gemini/test/ - Test queries with images
+    """
+    try:
+        gemini_service = GeminiService()
+
+        if request.method == "GET":
+            # Test simple text query
+            query = request.GET.get("query", "Tell me about financial planning")
+            response = gemini_service.send_message(query)
+            return JsonResponse({"success": True, "response": response})
+
+        elif request.method == "POST":
+            data = json.loads(request.body)
+            query = data.get("query", "What do you see in these images?")
+            image_urls = data.get("image_urls", [])
+
+            if image_urls:
+                response = gemini_service.send_message_with_images(query, image_urls)
+            else:
+                response = gemini_service.send_message(query)
+
+            return JsonResponse({"success": True, "response": response})
+
+    except Exception as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 
 @require_GET
