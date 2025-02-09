@@ -1,16 +1,16 @@
 import os
+import os.path
+import tempfile
 from io import BytesIO
 from typing import List, Optional
-import tempfile
-import os.path
 
 import PIL.Image
 import requests
-from pydub import AudioSegment
-
+import speech_recognition as sr
 from google import genai
 from google.genai import types
-import speech_recognition as sr
+from pydub import AudioSegment
+
 
 class GeminiService:
     def __init__(self):
@@ -61,11 +61,11 @@ class GeminiService:
         """
         try:
             # Create a temporary file with .wav extension
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
                 # Load the OGA file
                 audio = AudioSegment.from_ogg(oga_path)
                 # Export as WAV
-                audio.export(temp_wav.name, format='wav')
+                audio.export(temp_wav.name, format="wav")
                 print(f"Successfully converted OGA to WAV: {temp_wav.name}")
                 return temp_wav.name
         except Exception as e:
@@ -85,7 +85,7 @@ class GeminiService:
                 return None
 
             # Check if file is OGA and convert if necessary
-            if audio_file_path.lower().endswith('.oga'):
+            if audio_file_path.lower().endswith(".oga"):
                 wav_path = self.convert_oga_to_wav(audio_file_path)
                 if not wav_path:
                     return None
@@ -95,7 +95,7 @@ class GeminiService:
             with sr.AudioFile(audio_file_path) as source:
                 print(f"Loading audio file from: {audio_file_path}")
                 audio_data = self.recognizer.record(source)
-                
+
             # Convert speech to text
             try:
                 # First try using Google's speech recognition
@@ -105,18 +105,20 @@ class GeminiService:
                 print("Google Speech Recognition could not understand audio")
                 return None
             except sr.RequestError as e:
-                print(f"Could not request results from Google Speech Recognition service; {e}")
+                print(
+                    f"Could not request results from Google Speech Recognition service; {e}"
+                )
                 # Fallback to Gemini
                 try:
                     response = self.client.models.generate_content(
                         model="gemini-2.0-flash",
-                        contents=[{
-                            "type": "text",
-                            "text": "Please transcribe this audio to text",
-                        }, {
-                            "type": "audio",
-                            "audio": audio_data.get_raw_data()
-                        }]
+                        contents=[
+                            {
+                                "type": "text",
+                                "text": "Please transcribe this audio to text",
+                            },
+                            {"type": "audio", "audio": audio_data.get_raw_data()},
+                        ],
                     )
                     text = response.text
                     print(f"Successfully transcribed audio using Gemini fallback")
@@ -125,7 +127,7 @@ class GeminiService:
                     return None
 
             # Clean up temporary WAV file if it was created
-            if audio_file_path.endswith('.wav') and 'temp' in audio_file_path:
+            if audio_file_path.endswith(".wav") and "temp" in audio_file_path:
                 try:
                     os.unlink(audio_file_path)
                 except Exception as e:
@@ -143,3 +145,15 @@ class GeminiService:
         """
         # Note: Update this method based on the new client API chat functionality
         pass
+
+    def extract_user_name(self, message: str) -> Optional[str]:
+        """
+        Extract user name from the message
+        """
+        # Note: Update this method based on the new client API chat functionality
+        return self.send_message(
+            """Extract the full name of user from the message and return only the full name. 
+                                 Message: $message""".replace(
+                "$message", message
+            )
+        )

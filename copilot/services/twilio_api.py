@@ -124,13 +124,13 @@ class TwilioService:
 
                         # Save the media file
                         saved_path = self._save_media(content, filename, message_sid)
-                        
+
                         # Create TwilioMedia object with local path
                         media_items.append(
                             TwilioMedia(
                                 url=media_url,
                                 content_type=content_type,
-                                local_path=saved_path
+                                local_path=saved_path,
                             )
                         )
 
@@ -138,14 +138,15 @@ class TwilioService:
             message = TwilioMessage(
                 message_sid=message_sid,
                 body=request_data.get("Body", ""),
+                senderNumber=request_data.get("From", ""),
                 sender=request_data.get("From", "").replace("whatsapp:", ""),
                 recipient=request_data.get("To", "").replace("whatsapp:", ""),
                 media=media_items,
                 direction="inbound",
                 timestamp=request_data.get("DateCreated", datetime.now().isoformat()),
-                status="received"
+                status="received",
             )
-            
+
             # Create appropriate response based on received content
             if message.has_media:
                 response_message = f"Received {len(message.media)} media files"
@@ -154,7 +155,7 @@ class TwilioService:
 
             # Store the TwiML response in the message's status
             message.status = self.create_response(response_message)
-            
+
             return message
 
         except Exception as e:
@@ -162,12 +163,15 @@ class TwilioService:
             error_message = TwilioMessage(
                 message_sid=request_data.get("MessageSid", "error"),
                 body=request_data.get("Body", ""),
+                senderNumber=request_data.get("From", ""),
                 sender=request_data.get("From", "").replace("whatsapp:", ""),
                 recipient=request_data.get("To", "").replace("whatsapp:", ""),
                 media=[],
                 direction="inbound",
                 timestamp=datetime.now().isoformat(),
-                status=self.create_response("Sorry, there was an error processing your message")
+                status=self.create_response(
+                    "Sorry, there was an error processing your message"
+                ),
             )
             return error_message
 
@@ -223,6 +227,7 @@ class TwilioService:
             return TwilioMessage(
                 message_sid=twilio_message.sid,
                 body=message,
+                senderNumber=self.whatsapp_number,
                 sender=self.whatsapp_number,
                 recipient=to_phone,
                 media=media_items,
@@ -241,6 +246,7 @@ class TwilioService:
             # Extract basic message info
             message_sid = request_data.get("MessageSid", "")
             body = request_data.get("Body", "")
+            senderNumber = request_data.get("From", "")
             sender = request_data.get("From", "").replace("whatsapp:", "")
             recipient = request_data.get("To", "").replace("whatsapp:", "")
             num_media = int(request_data.get("NumMedia", 0))
@@ -269,6 +275,7 @@ class TwilioService:
             return TwilioMessage(
                 message_sid=message_sid,
                 body=body,
+                senderNumber=senderNumber,
                 sender=sender,
                 recipient=recipient,
                 media=media_items,
