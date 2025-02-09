@@ -255,3 +255,15 @@ class GeminiService:
         except Exception as e:
             print(f"Error parsing transaction update details: {str(e)}")
             return None
+
+    def answer_miscellaneous_query(self, message: str, media_urls) -> str:
+        """
+        Answer miscellaneous queries
+        """
+        return self.send_message_with_images(
+            """Answer the miscellaneous query based on your knowledge only if it is related to personal finances or financial literacy. Otherwise reply with "Sorry, I couldn't process your query".
+            Query: $message""".replace(
+                "$message", message
+            ),
+            media_urls,
+        )

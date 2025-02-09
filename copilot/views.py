@@ -56,6 +56,12 @@ def whatsapp_webhook(request):
         update_transaction(twilio_message)
     elif intent == "DELETE_TRANSACTION":
         delete_transaction(twilio_message)
+    elif intent == "ANALYTICS_REQUEST":
+        pass
+    elif intent == "MULTIPLE_TRANSACTIONS":
+        pass
+    else:
+        print(answer_miscellaneous_query(twilio_message))
 
     # twilio_service.send_message(twilio_message.sender, intent)
     return HttpResponse(
@@ -332,3 +338,13 @@ def create_user(twilio_message: TwilioMessage):
     except Exception as e:
         print(f"Error creating user: {str(e)}")
         return None
+
+
+def answer_miscellaneous_query(twilio_message: TwilioMessage):
+    """
+    Answer miscellaneous queries using Gemini API
+    Endpoint: /answer/
+    """
+    return gemini_service.answer_miscellaneous_query(
+        twilio_message.body, [media.url for media in twilio_message.media]
+    )
