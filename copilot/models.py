@@ -2,6 +2,7 @@ from django.db import models
 
 from copilot.datamodels.fields import YearlySummaryField
 from copilot.datamodels.summary import YearlySummary
+from copilot.datamodels.chatentry import ChatEntry
 
 class User(models.Model):
     name = models.CharField(max_length=100)
@@ -51,3 +52,28 @@ class ExpenseSummary(models.Model):
 
     def __str__(self):
         return f"Summary for {self.familyId}: {self.data}"
+
+class Chat(models.Model):
+    userId = models.CharField(max_length=50)
+    # Store data as a list of dictionaries
+    data = models.JSONField(default=list)
+
+    def __str__(self):
+        return f"Chat for {self.userId}: {self.data}"
+
+    def get_chat_entries(self):
+        """Convert the stored data to a list of ChatEntry objects."""
+        return [ChatEntry.from_dict(entry) for entry in self.data]
+
+    def add_chat_entry(self, entry):
+        """Add a ChatEntry to the 'data' field."""
+        if isinstance(entry, ChatEntry):
+            self.data.append(entry.to_dict())
+        else:
+            raise ValueError("entry must be a ChatEntry instance")
+    
+    def save(self, *args, **kwargs):
+        # Clean and save chat data as a list of dictionaries
+        super().save(*args, **kwargs)
+
+# class Metadata(models.Model):

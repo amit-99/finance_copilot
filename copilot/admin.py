@@ -1,7 +1,7 @@
 # admin.py
 
 from django.contrib import admin
-from copilot.models import User, Expense, ExpenseSummary
+from copilot.models import User, Expense, ExpenseSummary, Chat
 
 class ExpenseSummaryAdmin(admin.ModelAdmin):
     readonly_fields = ('formatted_data',)  # Make the data read-only
@@ -18,3 +18,4 @@ class ExpenseSummaryAdmin(admin.ModelAdmin):
 admin.site.register(User)
 admin.site.register(Expense)
 admin.site.register(ExpenseSummary, ExpenseSummaryAdmin)
+admin.site.register(Chat)
