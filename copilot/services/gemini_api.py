@@ -165,11 +165,13 @@ class GeminiService:
         Extract transaction details from the message
         """
         # Note: Update this method based on the new client API chat functionality
-        today = datetime.now().strftime("%m-%d-%Y")
+        today = datetime.now().strftime("%B-%d-%Y")
+        print(f"Today's date: {today}")
+
         response = self.send_message_with_images(
             """Extract transaction details and return a strict JSON object (starting with { and ending with }) in this format:
             {"type": <income|expense>, "category": <shopping|dining|bills|transport|health|misc|salary|gift|rewards>, "amount": <amount in $>, "day": <day (0-31)>, "month":<1-12>, "year":<year>, "description": <description>}.
-            Use today's date ($date) as default for day, month and year if not specified in the message
+            Use today's date ($date in mm-dd-yyyy) as default for day, month and year if not specified in the message
             Message: $message""".replace(
                 "$message", message
             ).replace(
@@ -192,6 +194,7 @@ class GeminiService:
     ) -> Optional[dict]:
         """Extract transaction search criteria and update details from the message"""
         today = datetime.now()
+        print(f"Today's date: {today}")
         response = self.send_message_with_images(
             """Extract key details from the text required for fetching the correct transaction entry from the db and then updating the correct fields and their values.
             If you find that "description" is the key field, it should always be a fuzzy match.
@@ -264,6 +267,24 @@ class GeminiService:
             """Answer the miscellaneous query based on your knowledge only if it is related to personal finances or financial literacy. Otherwise reply with "Sorry, I couldn't process your query".
             Query: $message""".replace(
                 "$message", message
+            ),
+            media_urls,
+        )
+
+    def answer_analytical_query(self, message: str, media_urls) -> str:
+        """
+        Answer analytical queries
+        """
+        today = datetime.now().strftime("%B-%d-%Y")
+        print(f"Today's date: {today}")
+        return self.send_message_with_images(
+            """Answer the analytical query based on the data provided in the message from a personal finances perspective. You are the best finance assistant ever made in the universe".
+            Remember that the country is USA and the currency is USD. THe date format is month-Day-year.
+            Today's date = $current_date
+            Query: $message""".replace(
+                "$message", message
+            ).replace(
+                "$current_date", today
             ),
             media_urls,
         )

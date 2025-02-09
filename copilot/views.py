@@ -47,21 +47,24 @@ def whatsapp_webhook(request):
 
     # Identify intent of the message
     intent = identify_intent(twilio_message, gemini_service)
+    answer = None
     print(f"Identified intent: {intent}")
     if intent == "INPUT_NAME" and not check_user_exists(twilio_message.sender):
-        create_user(twilio_message)
+        answer = create_user(twilio_message)
     elif intent == "CREATE_TRANSACTION":
-        create_transaction(twilio_message)
+        answer = create_transaction(twilio_message)
     elif intent == "UPDATE_TRANSACTION":
-        update_transaction(twilio_message)
+        answer = update_transaction(twilio_message)
     elif intent == "DELETE_TRANSACTION":
-        delete_transaction(twilio_message)
+        answer = delete_transaction(twilio_message)
     elif intent == "ANALYTICS_REQUEST":
-        pass
+        answer = answer_analytical_query(twilio_message)
     elif intent == "MULTIPLE_TRANSACTIONS":
         pass
     else:
-        print(answer_miscellaneous_query(twilio_message))
+        answer = answer_miscellaneous_query(twilio_message)
+
+    print(f"Answer: {answer}")
 
     # twilio_service.send_message(twilio_message.sender, intent)
     return HttpResponse(
@@ -347,4 +350,25 @@ def answer_miscellaneous_query(twilio_message: TwilioMessage):
     """
     return gemini_service.answer_miscellaneous_query(
         twilio_message.body, [media.url for media in twilio_message.media]
+    )
+
+
+def answer_analytical_query(twilio_message: TwilioMessage):
+    """
+    Process analytical queries using Gemini API
+    Endpoint: /analytics/
+    """
+    # Get all transactions for the family
+    user = fetchUser(twilio_message)
+    all_transactions = Transaction.objects.all()
+    family_transactions = all_transactions.filter(familyId=user.familyId)
+
+    # Convert transactions to CSV format
+    csv_data = "id,type,category,year,month,day,amount,description\n"
+    for transaction in family_transactions:
+        csv_data += f"{transaction.id},{transaction.type},{transaction.category},{transaction.year},{transaction.month},{transaction.day},{transaction.amount},{transaction.description}\n"
+    print("CSV Data:\n", csv_data)
+    return gemini_service.answer_analytical_query(
+        twilio_message.body + "\n" + csv_data,
+        [media.url for media in twilio_message.media],
     )
