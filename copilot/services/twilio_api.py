@@ -94,28 +94,27 @@ class TwilioService:
             extension = fallbacks.get(content_type, ".bin")
         return extension
 
-    def process_incoming_message(self, request_data: dict) -> str:
+    def process_incoming_message(self, request_data: dict) -> TwilioMessage:
         """
         Process incoming WhatsApp message and save any media
-        Returns: TwiML response
+        Returns: TwilioMessage object with processed data and response
         """
         try:
             message_sid = request_data.get("MessageSid")
             num_media = int(request_data.get("NumMedia", 0))
-            saved_files = []
+            media_items = []
 
-            # Handle media if present
+            # Process media if present
             for i in range(num_media):
                 media_url = request_data.get(f"MediaUrl{i}")
                 content_type = request_data.get(f"MediaContentType{i}")
 
                 if media_url and content_type:
+                    # Download and save media
                     content, original_filename = self._download_media(media_url)
                     if content:
-                        # Get extension from content type
+                        # Get extension and create filename
                         extension = self._get_file_extension(content_type)
-
-                        # Create filename with proper extension
                         base_filename = (
                             os.path.splitext(original_filename)[0]
                             if original_filename
@@ -123,23 +122,54 @@ class TwilioService:
                         )
                         filename = f"{base_filename}{extension}"
 
+                        # Save the media file
                         saved_path = self._save_media(content, filename, message_sid)
-                        if saved_path:
-                            saved_files.append(saved_path)
+                        
+                        # Create TwilioMedia object with local path
+                        media_items.append(
+                            TwilioMedia(
+                                url=media_url,
+                                content_type=content_type,
+                                local_path=saved_path
+                            )
+                        )
 
-            # Create response based on received content
-            if saved_files:
-                response_message = f"Received {len(saved_files)} media files"
+            # Create the TwilioMessage object with the downloaded media
+            message = TwilioMessage(
+                message_sid=message_sid,
+                body=request_data.get("Body", ""),
+                sender=request_data.get("From", "").replace("whatsapp:", ""),
+                recipient=request_data.get("To", "").replace("whatsapp:", ""),
+                media=media_items,
+                direction="inbound",
+                timestamp=request_data.get("DateCreated", datetime.now().isoformat()),
+                status="received"
+            )
+            
+            # Create appropriate response based on received content
+            if message.has_media:
+                response_message = f"Received {len(message.media)} media files"
             else:
                 response_message = "Received your message"
 
-            return self.create_response(response_message)
+            # Store the TwiML response in the message's status
+            message.status = self.create_response(response_message)
+            
+            return message
 
         except Exception as e:
             print(f"Error processing incoming message: {str(e)}")
-            return self.create_response(
-                "Sorry, there was an error processing your message"
+            error_message = TwilioMessage(
+                message_sid=request_data.get("MessageSid", "error"),
+                body=request_data.get("Body", ""),
+                sender=request_data.get("From", "").replace("whatsapp:", ""),
+                recipient=request_data.get("To", "").replace("whatsapp:", ""),
+                media=[],
+                direction="inbound",
+                timestamp=datetime.now().isoformat(),
+                status=self.create_response("Sorry, there was an error processing your message")
             )
+            return error_message
 
     def send_message(
         self,
