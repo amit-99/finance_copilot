@@ -50,6 +50,9 @@ def whatsapp_webhook(request):
         print(f"Identified intent: {intent}")
         if intent == "INPUT_NAME" and not check_user_exists(twilio_message.sender):
             create_user(twilio_message)
+        elif intent == "CREATE_TRANSACTION":
+            create_transaction(twilio_message)
+
         # if twilio_message.has_media:
         #     print(f"Message contains {len(twilio_message.media)} media files")
         #     for media in twilio_message.media:
@@ -165,22 +168,51 @@ def identify_intent(
         return "OTHER"
 
 
-def create_transaction(payload: dict):
+def fetchUser(twilio_message: TwilioMessage):
+    """
+    Fetch user details
+    Args:
+        twilio_message: TwilioMessage object containing user details
+    Returns:
+        User object
+    """
+    try:
+        user = User.objects.get(number=twilio_message.sender)
+        return user
+    except User.DoesNotExist:
+        return None
+
+
+def create_transaction(twilio_message: TwilioMessage):
     """
     Create a new transaction record
     Args:
-        payload: Dictionary containing transaction details (amount, category, description, date)
+        twilio_message: TwilioMessage containing transaction details
     Returns:
         Created transaction object
     """
     try:
-        transaction = Transaction.objects.create(
-            amount=payload.get("amount"),
-            category=payload.get("category"),
-            description=payload.get("description"),
-            date=payload.get("date"),
-        )
-        return transaction
+        user = fetchUser(twilio_message)
+        if user:
+            jsonData = gemini_service.extract_transaction_details(
+                twilio_message.body, [media.url for media in twilio_message.media]
+            )
+            if jsonData:
+                # Initialize transaction with required fields
+                transaction = Transaction(
+                    familyId=user.familyId,
+                    userId=user.userId,
+                    type=jsonData.get("type", "expense"),
+                    category=jsonData.get("category", "misc"),
+                    year=int(jsonData.get("year")),
+                    month=int(jsonData.get("month")),
+                    day=int(jsonData.get("day")),
+                    amount=float(jsonData.get("amount", 0.0)),
+                    description=jsonData.get("description", ""),
+                )
+                transaction.save()
+                return transaction
+        return None
     except Exception as e:
         print(f"Error creating transaction: {str(e)}")
         return None

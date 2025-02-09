@@ -1,6 +1,8 @@
+import json
 import os
 import os.path
 import tempfile
+from datetime import datetime
 from io import BytesIO
 from typing import List, Optional
 
@@ -157,3 +159,30 @@ class GeminiService:
                 "$message", message
             )
         )
+
+    def extract_transaction_details(self, message: str, media_urls) -> Optional[dict]:
+        """
+        Extract transaction details from the message
+        """
+        # Note: Update this method based on the new client API chat functionality
+        today = datetime.now().strftime("%m-%d-%Y")
+        response = self.send_message_with_images(
+            """Extract transaction details and return a strict JSON object (starting with { and ending with }) in this format:
+            {"type": <income|expense>, "category": <shopping|dining|bills|transport|health|misc|salary|gift|rewards>, "amount": <amount in $>, "day": <day (0-31)>, "month":<1-12>, "year":<year>, "description": <description>}.
+            Use today's date ($date) as default for day, month and year if not specified in the message
+            Message: $message""".replace(
+                "$message", message
+            ).replace(
+                "$date", today
+            ),
+            media_urls,
+        )
+        # Clean the response to ensure it contains valid JSON
+        jsonData = response.strip()
+        # Find the first '{' and last '}'
+        start = jsonData.find("{")
+        end = jsonData.rfind("}")
+        if start != -1 and end != -1:
+            jsonData = jsonData[start : end + 1]
+        print(f"Extracted transaction details: {jsonData}")
+        return json.loads(jsonData)
