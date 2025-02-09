@@ -14,7 +14,6 @@ PROMPT_CLASSIFY_MESSAGE = """
     
     If you think that the intent is OTHER, then answer the question based on your knowledge.
     Intents: $intents
-    Message: $message
 """.replace(
     "$intents", ", ".join(INTENTS)
 )

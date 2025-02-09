@@ -3,15 +3,23 @@ import os
 import os.path
 import tempfile
 from datetime import datetime, timedelta
+from http import client
 from io import BytesIO
 from typing import List, Optional
+from urllib.parse import urljoin
 
 import PIL.Image
 import requests
 import speech_recognition as sr
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.urls import get_script_prefix
 from google import genai
 from google.genai import types
+from openai import Image
 from pydub import AudioSegment
+
+genaiClient = genai.Client()
 
 
 class GeminiService:
@@ -23,37 +31,51 @@ class GeminiService:
         self.client = genai.Client(api_key=api_key)
         self.recognizer = sr.Recognizer()
 
-    def send_message(self, message: str) -> str:
+    def send_message(self, prompt, twillio_message) -> str:
         """
         Send a text message to Gemini and get the response
         """
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-2.0-flash", contents=[message]
-            )
-            return response.text
-        except Exception as e:
-            print(f"Error sending message to Gemini: {str(e)}")
-            return "Sorry, I couldn't process your message."
+        # Initialize contents list with the prompt
 
-    def send_message_with_images(self, message: str, image_urls: List[str]) -> str:
-        """
-        Send a message with images to Gemini and get the response
-        """
-        try:
-            images = []
-            for url in image_urls:
-                response = requests.get(url)
-                img = PIL.Image.open(BytesIO(response.content))
-                images.append(img)
+        contents = [prompt]
 
-            response = self.client.models.generate_content(
-                model="gemini-2.0-flash", contents=[message, *images]
-            )
-            return response.text
-        except Exception as e:
-            print(f"Error sending message with images to Gemini: {str(e)}")
-            return "Sorry, I couldn't process your message and images."
+        # Add message body if it exists and is not empty
+        if twillio_message.body and twillio_message.body.strip():
+            contents.append(twillio_message.body)
+
+        # Add media contents if they exist
+        if twillio_message.media:
+            media_contents = [
+                self.toBytes(media.local_path, media.content_type)
+                for media in twillio_message.media
+                if media.local_path
+            ]
+            contents.extend(media_contents)
+        response = self.client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=contents,
+        )
+        return response.text
+
+    # def send_message_with_images(self, message: str, image_urls: List[str]) -> str:
+    #     """
+    #     Send a message with images to Gemini and get the response
+    #     """
+    #     print(f"Sending message with images to Gemini: {message}, {image_urls}")
+    #     try:
+    #         images = []
+    #         for url in image_urls:
+    #             response = requests.get(url)
+    #             img = PIL.Image.open(BytesIO(response.content))
+    #             images.append(img)
+
+    #         response = self.client.models.generate_content(
+    #             model="gemini-2.0-flash", contents=[message, *images]
+    #         )
+    #         return response.text
+    #     except Exception as e:
+    #         print(f"Error sending message with images to Gemini: {str(e)}")
+    #         return "Sorry, I couldn't process your message and images."
 
     def convert_oga_to_wav(self, oga_path: str) -> Optional[str]:
         """
@@ -148,37 +170,37 @@ class GeminiService:
         # Note: Update this method based on the new client API chat functionality
         pass
 
-    def extract_user_name(self, message: str) -> Optional[str]:
+    def extract_user_name(self, twilio_message: str) -> Optional[str]:
         """
         Extract user name from the message
         """
+        print("extract_user_name")
         # Note: Update this method based on the new client API chat functionality
         return self.send_message(
             """Extract the full name of user from the message and return only the full name. 
-                                 Message: $message""".replace(
-                "$message", message
-            )
+                                 """,
+            twilio_message,
         )
 
-    def extract_transaction_details(self, message: str, media_urls) -> Optional[dict]:
+    def extract_transaction_details(self, twilio_message) -> Optional[dict]:
         """
         Extract transaction details from the message
         """
+        print("extract_transaction_details")
         # Note: Update this method based on the new client API chat functionality
         today = datetime.now().strftime("%B-%d-%Y")
         print(f"Today's date: {today}")
 
-        response = self.send_message_with_images(
+        response = self.send_message(
             """Extract transaction details and return a strict JSON object (starting with { and ending with }) in this format:
             {"type": <income|expense>, "category": <shopping|dining|bills|transport|health|misc|salary|gift|rewards>, "amount": <amount in $>, "day": <day (0-31)>, "month":<1-12>, "year":<year>, "description": <description>}.
             Use today's date ($date in mm-dd-yyyy) as default for day, month and year if not specified in the message
             Message: $message""".replace(
-                "$message", message
-            ).replace(
                 "$date", today
             ),
-            media_urls,
+            twilio_message,
         )
+
         # Clean the response to ensure it contains valid JSON
         jsonData = response.strip()
         # Find the first '{' and last '}'
@@ -189,13 +211,12 @@ class GeminiService:
         print(f"Extracted transaction details: {jsonData}")
         return json.loads(jsonData)
 
-    def extract_transaction_update_details(
-        self, message: str, media_urls
-    ) -> Optional[dict]:
+    def extract_transaction_update_details(self, twilio_message) -> Optional[dict]:
+        print("extract_transaction_update_details")
         """Extract transaction search criteria and update details from the message"""
         today = datetime.now()
         print(f"Today's date: {today}")
-        response = self.send_message_with_images(
+        response = self.send_message(
             """Extract key details from the text required for fetching the correct transaction entry from the db and then updating the correct fields and their values.
             If you find that "description" is the key field, it should always be a fuzzy match.
             If you find that "amount" is the key field, it should always be an exact match.
@@ -225,10 +246,8 @@ class GeminiService:
             }
 
 
-            Message to analyze: $message""".replace(
-                "$message", message
-            ),
-            media_urls,
+            """,
+            twilio_message,
         )
         # Clean and parse JSON response
         try:
@@ -259,32 +278,50 @@ class GeminiService:
             print(f"Error parsing transaction update details: {str(e)}")
             return None
 
-    def answer_miscellaneous_query(self, message: str, media_urls) -> str:
+    def answer_miscellaneous_query(self, twilio_message) -> str:
         """
         Answer miscellaneous queries
         """
-        return self.send_message_with_images(
-            """Answer the miscellaneous query based on your knowledge only if it is related to personal finances or financial literacy. Otherwise reply with "Sorry, I couldn't process your query".
-            Query: $message""".replace(
-                "$message", message
-            ),
-            media_urls,
+        prompt = """Answer the miscellaneous query based on your knowledge only if it is related to personal finances or financial literacy. Otherwise reply with "Sorry, I couldn't process your query".
+            """ + (
+            ("Query:" + twilio_message.body)
+            if (not twilio_message.body and len(twilio_message.body.strip()) > 0)
+            else ""
         )
+        twilio_message.body = ""
+        return self.send_message(prompt, twilio_message)
 
-    def answer_analytical_query(self, message: str, media_urls) -> str:
+    def answer_analytical_query(self, twilio_message) -> str:
         """
         Answer analytical queries
         """
         today = datetime.now().strftime("%B-%d-%Y")
         print(f"Today's date: {today}")
-        return self.send_message_with_images(
+        return self.send_message(
             """Answer the analytical query based on the data provided in the message from a personal finances perspective. You are the best finance assistant ever made in the universe".
             Remember that the country is USA and the currency is USD. THe date format is month-Day-year.
             Today's date = $current_date
-            Query: $message""".replace(
-                "$message", message
-            ).replace(
+            """.replace(
                 "$current_date", today
             ),
-            media_urls,
+            twilio_message,
         )
+
+    def toBytes(self, media_path, content_type):
+        """
+        Convert media file to appropriate format for Gemini API
+        Args:
+            media_path: Relative path to media file in storage
+            content_type: MIME type of the media
+        """
+
+        # Get absolute filesystem path
+        abs_file_path = default_storage.path(media_path)
+        print(f"Absolute file path: {abs_file_path}")
+
+        if content_type.startswith("image"):
+            # For images, load the file directly using PIL
+            return PIL.Image.open(abs_file_path)
+        elif content_type.startswith("audio"):
+            # For audio, use the absolute file path
+            return "Voice Message: " + self.convert_speech_to_text(abs_file_path)

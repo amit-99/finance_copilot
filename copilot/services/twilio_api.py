@@ -1,6 +1,7 @@
 import mimetypes
 import os
 from datetime import datetime
+from io import BytesIO
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -9,6 +10,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from dotenv import load_dotenv
+from PIL import Image
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -220,7 +222,10 @@ class TwilioService:
             elif media_urls:
                 for url in media_urls:
                     media_items.append(
-                        TwilioMedia(url=url, content_type=mimetypes.guess_type(url)[0])
+                        TwilioMedia(
+                            url=url,
+                            content_type=mimetypes.guess_type(url)[0],
+                        )
                     )
 
             # Return message object

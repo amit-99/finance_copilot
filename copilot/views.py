@@ -34,21 +34,17 @@ def whatsapp_webhook(request):
     twilio_message = twilio_service.parse_incoming_message(request.POST)
     print(f"Received message from {twilio_message.sender}: {twilio_message.body}")
 
-    # if not check_user_exists(twilio_message.sender):
-    #     print(f"User not found, creating new user")
-    #     twilio_service.send_message(
-    #         twilio_message.sender,
-    #         "Hello! I'm your financial copilot. Please tell me your name to get started.",
-    #     )
-    #     return HttpResponse(
-    #         content=twilio_service.create_response("Please tell me your name"),
-    #         content_type="text/xml",
-    #     )
-
     # Identify intent of the message
     intent = identify_intent(twilio_message, gemini_service)
+    print("Identified intent:", intent)
+
+    # print(
+    #     "speech-to-text:",
+    #     gemini_service.convert_speech_to_text(
+    #         default_storage.path(twilio_message.media[0].local_path)
+    #     ),
+    # )
     answer = None
-    print(f"Identified intent: {intent}")
     if intent == "INPUT_NAME" and not check_user_exists(twilio_message.sender):
         answer = create_user(twilio_message)
     elif intent == "CREATE_TRANSACTION":
@@ -66,7 +62,7 @@ def whatsapp_webhook(request):
 
     print(f"Answer: {answer}")
 
-    # twilio_service.send_message(twilio_message.sender, intent)
+    twilio_service.send_message(twilio_message.sender, answer)
     return HttpResponse(
         content=twilio_service.create_response(intent, media_urls=[SAMPLE_IMAGE_URL]),
         content_type="text/xml",
@@ -123,16 +119,10 @@ def identify_intent(
     """
     try:
         # Replace placeholder in prompt with actual message
-        prompt = PROMPT_CLASSIFY_MESSAGE.replace("$message", twilio_message.body)
-
-        # If message has media, use multimodal classification
-        if twilio_message.has_media:
-            # Get media URLs for all media items
-            media_urls = [media.url for media in twilio_message.media]
-            response = gemini_service.send_message_with_images(prompt, media_urls)
-        else:
-            # Text-only classification
-            response = gemini_service.send_message(prompt)
+        prompt = PROMPT_CLASSIFY_MESSAGE + (
+            "Message: " + twilio_message.body if (not twilio_message.body) else ""
+        )
+        response = gemini_service.send_message(prompt, twilio_message)
 
         # Clean and validate the response
         intent = response.strip().upper()
@@ -172,9 +162,7 @@ def create_transaction(twilio_message: TwilioMessage):
     try:
         user = fetchUser(twilio_message)
         if user:
-            jsonData = gemini_service.extract_transaction_details(
-                twilio_message.body, [media.url for media in twilio_message.media]
-            )
+            jsonData = gemini_service.extract_transaction_details(twilio_message)
             if jsonData:
                 # Initialize transaction with required fields
                 transaction = Transaction(
@@ -208,9 +196,7 @@ def update_transaction(twilio_message: TwilioMessage):
 
     user = fetchUser(twilio_message)
     if user:
-        data = gemini_service.extract_transaction_update_details(
-            twilio_message.body, [media.url for media in twilio_message.media]
-        )
+        data = gemini_service.extract_transaction_update_details(twilio_message)
 
         # Get all transactions for the family
         all_transactions = Transaction.objects.all()
@@ -267,9 +253,7 @@ def delete_transaction(twilio_message: TwilioMessage):
 
     user = fetchUser(twilio_message)
     if user:
-        data = gemini_service.extract_transaction_update_details(
-            twilio_message.body, [media.url for media in twilio_message.media]
-        )
+        data = gemini_service.extract_transaction_update_details(twilio_message)
 
         # Get all transactions for the family
         all_transactions = Transaction.objects.all()
@@ -331,7 +315,7 @@ def create_user(twilio_message: TwilioMessage):
     """
     try:
         # Extract user's name using gemini service
-        extractedName = gemini_service.extract_user_name(twilio_message.body).strip()
+        extractedName = gemini_service.extract_user_name(twilio_message).strip()
         print(f"Extracted name: {extractedName}")
         user = User(
             name=extractedName,
@@ -348,9 +332,7 @@ def answer_miscellaneous_query(twilio_message: TwilioMessage):
     Answer miscellaneous queries using Gemini API
     Endpoint: /answer/
     """
-    return gemini_service.answer_miscellaneous_query(
-        twilio_message.body, [media.url for media in twilio_message.media]
-    )
+    return gemini_service.answer_miscellaneous_query(twilio_message)
 
 
 def answer_analytical_query(twilio_message: TwilioMessage):
@@ -368,7 +350,5 @@ def answer_analytical_query(twilio_message: TwilioMessage):
     for transaction in family_transactions:
         csv_data += f"{transaction.id},{transaction.type},{transaction.category},{transaction.year},{transaction.month},{transaction.day},{transaction.amount},{transaction.description}\n"
     print("CSV Data:\n", csv_data)
-    return gemini_service.answer_analytical_query(
-        twilio_message.body + "\n" + csv_data,
-        [media.url for media in twilio_message.media],
-    )
+    twilio_message.body = twilio_message.body + "\n" + csv_data
+    return gemini_service.answer_analytical_query(twilio_message)
