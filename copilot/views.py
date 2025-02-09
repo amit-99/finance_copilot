@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from PIL import Image
+from django.core.files.storage import default_storage
 
 from .services.gemini_api import GeminiService
 from .services.twilio_api import TwilioService
@@ -22,22 +23,37 @@ def whatsapp_webhook(request):
     """
     try:
         twilio_service = TwilioService()
+        gemini_service = GeminiService()
 
         # Parse incoming message
         twilio_message = twilio_service.parse_incoming_message(request.POST)
         print(f"Received message from {twilio_message.sender}: {twilio_message.body}")
 
+        response_text = "Thanks for your message!"
+        audio_transcriptions = []
+
         if twilio_message.has_media:
             print(f"Message contains {len(twilio_message.media)} media files")
             for media in twilio_message.media:
                 print(f"Media saved at: {media.local_path}")
+                
+                # Handle audio files
+                if media.content_type and media.content_type.startswith('audio/'):
+                    print(f"Processing audio file: {media.content_type}")
+                    # Get absolute file path from storage
+                    abs_file_path = default_storage.path(media.local_path)
+                    transcribed_text = gemini_service.convert_speech_to_text(abs_file_path)
+                    if transcribed_text:
+                        print(f"Transcribed audio: {transcribed_text}")
+                        audio_transcriptions.append(transcribed_text)
 
-        # Create response with text and image
-        response_text = "Thanks for your message! Here's a random image for you."
-        if twilio_message.has_media:
-            response_text += (
-                f" I also received your {len(twilio_message.media)} media files."
+        # Build response message
+        if audio_transcriptions:
+            response_text += "\nTranscribed audio message(s):\n" + "\n".join(
+                f"- {text}" for text in audio_transcriptions
             )
+        elif twilio_message.has_media:
+            response_text += f" I received your {len(twilio_message.media)} media files."
 
         return HttpResponse(
             content=twilio_service.create_response(
