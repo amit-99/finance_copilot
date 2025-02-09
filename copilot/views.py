@@ -9,6 +9,7 @@ from PIL import Image
 
 from .services.gemini_api import GeminiService
 from .services.twilio_api import TwilioService
+from .services.reward_generator import RewardGenerator
 
 SAMPLE_IMAGE_URL = "https://picsum.photos/200/300"
 
@@ -85,7 +86,21 @@ def test_gemini(request):
     except Exception as e:
         return JsonResponse({"success": False, "error": str(e)}, status=500)
 
-
+@require_GET
+def generate_reward(request):
+    """
+    Generate a random reward coupon
+    Endpoint: /reward/
+    """
+    category_name = request.GET.get("category", None).lower()
+    if not category_name:
+        return JsonResponse({"success": False, "error": "Category not provided"}, status=400)
+    return JsonResponse(
+        {
+            "success": True,
+            "reward": RewardGenerator().generate_coupon(category_name),
+        }
+    )
 @require_GET
 def hello_world(request):
     """
