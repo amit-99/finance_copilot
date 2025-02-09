@@ -11,11 +11,15 @@ class User(models.Model):
     number = models.CharField(
         max_length=15,
         unique=True
-    )
+    )   
     
-    familyId = models.CharField(max_length=50, blank=True, null=True)
     userId = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    familyId = models.CharField(max_length=50, blank=True, null=True)
 
+    def save(self, *args, **kwargs):
+        self.familyId = self.userId
+        super(User, self).save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.name} ({self.number})"
 

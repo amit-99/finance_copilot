@@ -4,7 +4,9 @@ from django.contrib import admin
 from copilot.models import User, Expense, ExpenseSummary, Chat
 
 class UserAdmin(admin.ModelAdmin):
-    readonly_fields = ('userId',)
+    readonly_fields = ('userId', 'familyId')
+
+    list_display = ('userId', 'name', 'number')
 
 class ExpenseSummaryAdmin(admin.ModelAdmin):
     readonly_fields = ('formatted_data',)  # Make the data read-only
