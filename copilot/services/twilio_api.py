@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
+from ..models.twilio_message import TwilioMedia, TwilioMessage
+
 # Load environment variables
 load_dotenv()
 
@@ -140,31 +142,129 @@ class TwilioService:
             )
 
     def send_message(
-        self, to_phone: str, message: str, media_paths: List[str] = None, request=None
-    ) -> bool:
+        self,
+        to_phone: str,
+        message: str,
+        media_paths: List[str] = None,
+        media_urls: List[str] = None,
+    ) -> Optional[TwilioMessage]:
         """
-        Send WhatsApp message with optional media from storage
+        Send WhatsApp message with optional media
+        :param media_paths: List of local file paths
+        :param media_urls: List of public URLs for media
         """
         try:
+            # Prepare message parameters
             message_params = {
                 "body": message,
                 "from_": self.format_whatsapp_number(self.whatsapp_number),
                 "to": self.format_whatsapp_number(to_phone),
             }
 
+            # Handle media
             if media_paths:
-                # Convert local storage paths to public URLs
-                media_urls = [
-                    default_storage.url(path) if request is None else request.build_absolute_uri(default_storage.url(path))
-                    for path in media_paths
+                message_params["media_url"] = [
+                    default_storage.url(path) for path in media_paths
                 ]
+            elif media_urls:
                 message_params["media_url"] = media_urls
 
-            self.client.messages.create(**message_params)
-            return True
+            # Send message
+            twilio_message = self.client.messages.create(**message_params)
+
+            # Create media items for response
+            media_items = []
+            if media_paths:
+                for path, url in zip(media_paths, message_params["media_url"]):
+                    media_items.append(
+                        TwilioMedia(
+                            url=url,
+                            content_type=mimetypes.guess_type(path)[0],
+                            local_path=path,
+                        )
+                    )
+            elif media_urls:
+                for url in media_urls:
+                    media_items.append(
+                        TwilioMedia(url=url, content_type=mimetypes.guess_type(url)[0])
+                    )
+
+            # Return message object
+            return TwilioMessage(
+                message_sid=twilio_message.sid,
+                body=message,
+                sender=self.whatsapp_number,
+                recipient=to_phone,
+                media=media_items,
+                direction="outbound",
+                timestamp=datetime.now().isoformat(),
+                status=twilio_message.status,
+            )
+
         except Exception as e:
-            print(f"Error sending WhatsApp message: {str(e)}")
-            return False
+            print(f"Error sending message: {str(e)}")
+            return None
+
+    def parse_incoming_message(self, request_data: dict) -> TwilioMessage:
+        """Parse incoming webhook data into TwilioMessage object"""
+        try:
+            # Extract basic message info
+            message_sid = request_data.get("MessageSid", "")
+            body = request_data.get("Body", "")
+            sender = request_data.get("From", "").replace("whatsapp:", "")
+            recipient = request_data.get("To", "").replace("whatsapp:", "")
+            num_media = int(request_data.get("NumMedia", 0))
+            timestamp = request_data.get("DateCreated", datetime.now().isoformat())
+
+            # Process media if present
+            media_items = []
+            for i in range(num_media):
+                media_url = request_data.get(f"MediaUrl{i}")
+                content_type = request_data.get(f"MediaContentType{i}")
+
+                if media_url and content_type:
+                    # Download and save media
+                    local_path = self._save_incoming_media(
+                        media_url, content_type, message_sid
+                    )
+
+                    media_items.append(
+                        TwilioMedia(
+                            url=media_url,
+                            content_type=content_type,
+                            local_path=local_path,
+                        )
+                    )
+
+            return TwilioMessage(
+                message_sid=message_sid,
+                body=body,
+                sender=sender,
+                recipient=recipient,
+                media=media_items,
+                direction="inbound",
+                timestamp=timestamp,
+            )
+
+        except Exception as e:
+            print(f"Error parsing message: {str(e)}")
+            raise
+
+    def _save_incoming_media(
+        self, media_url: str, content_type: str, message_sid: str
+    ) -> Optional[str]:
+        """Download and save media file, return local path"""
+        try:
+            content, _ = self._download_media(media_url)
+            if content:
+                extension = self._get_file_extension(content_type)
+                filename = f"{message_sid}_{datetime.now().timestamp()}{extension}"
+
+                return self._save_media(content, filename, message_sid)
+            return None
+        except Exception as e:
+            print(f"Error saving media: {str(e)}")
+            return None
 
     def get_message_history(self, limit: int = 10) -> List[dict]:
         """
