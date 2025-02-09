@@ -1,4 +1,5 @@
 from django.db import models
+import uuid
 
 from copilot.datamodels.fields import YearlySummaryField
 from copilot.datamodels.summary import YearlySummary
@@ -13,7 +14,7 @@ class User(models.Model):
     )
     
     familyId = models.CharField(max_length=50, blank=True, null=True)
-    userId = models.CharField(max_length=50, unique=True)
+    userId = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     def __str__(self):
         return f"{self.name} ({self.number})"
