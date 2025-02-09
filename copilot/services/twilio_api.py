@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
-from ..models.twilio_message import TwilioMedia, TwilioMessage
+from ..datamodels.twilio_message import TwilioMedia, TwilioMessage
 
 # Load environment variables
 load_dotenv()
