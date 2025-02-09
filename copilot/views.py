@@ -1,5 +1,6 @@
 import io
 import json
+from difflib import SequenceMatcher
 
 from django.core.files.storage import default_storage
 from django.http import HttpResponse, JsonResponse
@@ -28,71 +29,39 @@ def whatsapp_webhook(request):
     Handle incoming WhatsApp messages using TwilioService
     Endpoint: /whatsapp/
     """
-    try:
 
-        # Parse incoming message
-        twilio_message = twilio_service.parse_incoming_message(request.POST)
-        print(f"Received message from {twilio_message.sender}: {twilio_message.body}")
+    # Parse incoming message
+    twilio_message = twilio_service.parse_incoming_message(request.POST)
+    print(f"Received message from {twilio_message.sender}: {twilio_message.body}")
 
-        # if not check_user_exists(twilio_message.sender):
-        #     print(f"User not found, creating new user")
-        #     twilio_service.send_message(
-        #         twilio_message.sender,
-        #         "Hello! I'm your financial copilot. Please tell me your name to get started.",
-        #     )
-        #     return HttpResponse(
-        #         content=twilio_service.create_response("Please tell me your name"),
-        #         content_type="text/xml",
-        #     )
+    # if not check_user_exists(twilio_message.sender):
+    #     print(f"User not found, creating new user")
+    #     twilio_service.send_message(
+    #         twilio_message.sender,
+    #         "Hello! I'm your financial copilot. Please tell me your name to get started.",
+    #     )
+    #     return HttpResponse(
+    #         content=twilio_service.create_response("Please tell me your name"),
+    #         content_type="text/xml",
+    #     )
 
-        # Identify intent of the message
-        intent = identify_intent(twilio_message, gemini_service)
-        print(f"Identified intent: {intent}")
-        if intent == "INPUT_NAME" and not check_user_exists(twilio_message.sender):
-            create_user(twilio_message)
-        elif intent == "CREATE_TRANSACTION":
-            create_transaction(twilio_message)
+    # Identify intent of the message
+    intent = identify_intent(twilio_message, gemini_service)
+    print(f"Identified intent: {intent}")
+    if intent == "INPUT_NAME" and not check_user_exists(twilio_message.sender):
+        create_user(twilio_message)
+    elif intent == "CREATE_TRANSACTION":
+        create_transaction(twilio_message)
+    elif intent == "UPDATE_TRANSACTION":
+        update_transaction(twilio_message)
+    elif intent == "DELETE_TRANSACTION":
+        delete_transaction(twilio_message)
 
-        # if twilio_message.has_media:
-        #     print(f"Message contains {len(twilio_message.media)} media files")
-        #     for media in twilio_message.media:
-        #         print(f"Media saved at: {media.local_path}")
-
-        #         # Handle audio files
-        #         if media.content_type and media.content_type.startswith("audio/"):
-        #             print(f"Processing audio file: {media.content_type}")
-        #             # Get absolute file path from storage
-        #             abs_file_path = default_storage.path(media.local_path)
-        #             transcribed_text = gemini_service.convert_speech_to_text(
-        #                 abs_file_path
-        #             )
-        #             if transcribed_text:
-        #                 print(f"Transcribed audio: {transcribed_text}")
-        #                 audio_transcriptions.append(transcribed_text)
-
-        # # Build response message
-        # if audio_transcriptions:
-        #     response_text += "\nTranscribed audio message(s):\n" + "\n".join(
-        #         f"- {text}" for text in audio_transcriptions
-        #     )
-        # elif twilio_message.has_media:
-        #     response_text += (
-        #         f" I received your {len(twilio_message.media)} media files."
-        #     )
-        twilio_service.send_message(twilio_message.sender, intent)
-        return HttpResponse(
-            content=twilio_service.create_response(
-                intent, media_urls=[SAMPLE_IMAGE_URL]
-            ),
-            content_type="text/xml",
-        )
-
-    except Exception as e:
-        print(f"Error processing WhatsApp message: {str(e)}")
-        return HttpResponse(
-            content=TwilioService().create_response("Sorry, an error occurred"),
-            content_type="text/xml",
-        )
+    # twilio_service.send_message(twilio_message.sender, intent)
+    return HttpResponse(
+        content=twilio_service.create_response(intent, media_urls=[SAMPLE_IMAGE_URL]),
+        content_type="text/xml",
+    )
 
 
 @csrf_exempt
@@ -218,41 +187,114 @@ def create_transaction(twilio_message: TwilioMessage):
         return None
 
 
-def update_transaction(transaction_id: int, payload: dict):
+def update_transaction(twilio_message: TwilioMessage):
     """
-    Update an existing transaction
+    Update the latest transaction matching amount and type for a user's family
+    using brute force search
     Args:
-        transaction_id: ID of transaction to update
-        payload: Dictionary containing updated transaction details
+        twilio_message: TwilioMessage containing search criteria and update details
     Returns:
         Updated transaction object
     """
-    try:
-        transaction = Transaction.objects.get(id=transaction_id)
-        for field, value in payload.items():
-            setattr(transaction, field, value)
-        transaction.save()
-        return transaction
-    except Exception as e:
-        print(f"Error updating transaction: {str(e)}")
-        return None
+
+    user = fetchUser(twilio_message)
+    if user:
+        data = gemini_service.extract_transaction_update_details(
+            twilio_message.body, [media.url for media in twilio_message.media]
+        )
+
+        # Get all transactions for the family
+        all_transactions = Transaction.objects.all()
+        family_transactions = all_transactions.filter(familyId=user.familyId)
+
+        print(f"Found {len(family_transactions)} transactions for family")
+        # Search criteria
+        search_type = data["search"].get("type", "expense")
+        search_amount = int(data["search"].get("amount", 0))
+
+        print(f"Searching for type: {search_type}, amount: {search_amount}")
+
+        # Filter matching transactions
+        matching_transactions = []
+        for transaction in family_transactions:
+            print(f"Checking transaction: {transaction}")
+            if search_amount == int(transaction.amount):
+                if search_type and transaction.type == search_type:
+                    matching_transactions.append(transaction)
+
+        print("Matching transactions:", matching_transactions)
+        for t in matching_transactions:
+            print(
+                f"ID: {t.id}, Type: {t.type}, Amount: {t.amount}, Date: {t.year}-{t.month}-{t.day}"
+            )
+        # Get the latest matching transaction
+        if matching_transactions:
+            latest_transaction = max(
+                matching_transactions, key=lambda x: (x.year, x.month, x.day)
+            )
+
+            print(f"Found transaction to update: {latest_transaction.id}")
+            # Apply updates to the latest transaction
+            for field, value in data["updates"].items():
+                if field in ["year", "month", "day"]:
+                    value = int(value)
+                elif field == "amount":
+                    value = float(value)
+                setattr(latest_transaction, field, value)
+            latest_transaction.save()
+            return latest_transaction
+    return None
 
 
-def delete_transaction(transaction_id: int):
+def delete_transaction(twilio_message: TwilioMessage):
     """
-    Delete a transaction
+    Update the latest transaction matching amount and type for a user's family
+    using brute force search
     Args:
-        transaction_id: ID of transaction to delete
+        twilio_message: TwilioMessage containing search criteria and update details
     Returns:
-        Boolean indicating success
+        Updated transaction object
     """
-    try:
-        transaction = Transaction.objects.get(id=transaction_id)
-        transaction.delete()
-        return True
-    except Exception as e:
-        print(f"Error deleting transaction: {str(e)}")
-        return False
+
+    user = fetchUser(twilio_message)
+    if user:
+        data = gemini_service.extract_transaction_update_details(
+            twilio_message.body, [media.url for media in twilio_message.media]
+        )
+
+        # Get all transactions for the family
+        all_transactions = Transaction.objects.all()
+        family_transactions = all_transactions.filter(familyId=user.familyId)
+
+        print(f"Found {len(family_transactions)} transactions for family")
+        # Search criteria
+        search_type = data["search"].get("type", "expense")
+        search_amount = int(data["search"].get("amount", 0))
+
+        print(f"Searching for type: {search_type}, amount: {search_amount}")
+
+        # Filter matching transactions
+        matching_transactions = []
+        for transaction in family_transactions:
+            print(f"Checking transaction: {transaction}")
+            if search_amount == int(transaction.amount):
+                if search_type and transaction.type == search_type:
+                    matching_transactions.append(transaction)
+
+        print("Matching transactions:", matching_transactions)
+        for t in matching_transactions:
+            print(
+                f"ID: {t.id}, Type: {t.type}, Amount: {t.amount}, Date: {t.year}-{t.month}-{t.day}"
+            )
+        # Get the latest matching transaction
+        if matching_transactions:
+            latest_transaction = max(
+                matching_transactions, key=lambda x: (x.year, x.month, x.day)
+            )
+
+            latest_transaction.delete()
+            return latest_transaction
+    return None
 
 
 def check_user_exists(phone_number: str) -> bool:

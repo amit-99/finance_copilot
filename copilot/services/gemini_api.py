@@ -2,7 +2,7 @@ import json
 import os
 import os.path
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import List, Optional
 
@@ -186,3 +186,72 @@ class GeminiService:
             jsonData = jsonData[start : end + 1]
         print(f"Extracted transaction details: {jsonData}")
         return json.loads(jsonData)
+
+    def extract_transaction_update_details(
+        self, message: str, media_urls
+    ) -> Optional[dict]:
+        """Extract transaction search criteria and update details from the message"""
+        today = datetime.now()
+        response = self.send_message_with_images(
+            """Extract key details from the text required for fetching the correct transaction entry from the db and then updating the correct fields and their values.
+            If you find that "description" is the key field, it should always be a fuzzy match.
+            If you find that "amount" is the key field, it should always be an exact match.
+            If you find that "category" is the key field, it should always be an exact match.
+            If you find that "day" is the key field, it should always be an exact match.
+            If you find that "month" is the key field, it should always be an exact match.
+            If you find that "year" is the key field, it should always be an exact match.
+            If you find that "type" is the key field, it should always be an exact match.
+
+            If date related information is not given then DO NOT ASSUME ANYTHING.
+            If amount is not given, then for description field output multiple one word possibilities for the search.
+
+            Return format:
+            Only include fields that are identified and not others
+            {
+                "search": {
+                    "type": "income|expense",
+                    "category": "category",
+                    "amount": amount,
+                    "day": day,
+                    "month": month,
+                    "year": year
+                },
+                "updates": {
+                    // only fields being updated
+                }
+            }
+
+
+            Message to analyze: $message""".replace(
+                "$message", message
+            ),
+            media_urls,
+        )
+        # Clean and parse JSON response
+        try:
+            jsonData = response.strip()
+            start = jsonData.find("{")
+            end = jsonData.rfind("}")
+            if start != -1 and end != -1:
+                jsonData = jsonData[start : end + 1]
+            print(f"Extracted transaction update details: {jsonData}")
+            parsed_data = json.loads(jsonData)
+
+            # Convert relative dates to absolute dates
+            if "search" in parsed_data:
+                search = parsed_data["search"]
+                if "day" in search and search["day"] == "<today-7>":
+                    search["day"] = (today - timedelta(days=7)).day
+                elif "day" in search and search["day"] == "<yesterday's day>":
+                    search["day"] = (today - timedelta(days=1)).day
+
+                # Ensure current year/month if not specified
+                if "year" not in search or str(search["year"]).startswith("<"):
+                    search["year"] = today.year
+                if "month" not in search or str(search["month"]).startswith("<"):
+                    search["month"] = today.month
+
+            return parsed_data
+        except Exception as e:
+            print(f"Error parsing transaction update details: {str(e)}")
+            return None

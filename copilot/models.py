@@ -43,7 +43,7 @@ class Transaction(models.Model):
     recordType = models.CharField(max_length=20, default="transaction")
 
     def __str__(self):
-        return f"{self.type.capitalize()} - {self.category} ({self.date})"
+        return f"{self.type.capitalize()} - {self.category}"
 
 
 class TransactionSummary(models.Model):
