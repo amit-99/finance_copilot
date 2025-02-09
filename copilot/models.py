@@ -1,52 +1,54 @@
-from django.db import models
 import uuid
 
+from django.db import models
+
+from copilot.datamodels.chatentry import ChatEntry
 from copilot.datamodels.fields import YearlySummaryField
 from copilot.datamodels.summary import YearlySummary
-from copilot.datamodels.chatentry import ChatEntry
+
 
 class User(models.Model):
     name = models.CharField(max_length=100)
-    
-    number = models.CharField(
-        max_length=15,
-        unique=True
-    )   
-    
+
+    number = models.CharField(max_length=15, unique=True)
+
     userId = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     familyId = models.CharField(max_length=50, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         self.familyId = self.userId
         super(User, self).save(*args, **kwargs)
-    
+
     def __str__(self):
         return f"{self.name} ({self.number})"
 
-class Expense(models.Model):
-    EXPENSE_TYPES = [
-        ('income', 'Income'),
-        ('expense', 'Expense'),
+
+class Transaction(models.Model):
+    TRANSACTION_TYPES = [
+        ("income", "Income"),
+        ("expense", "Expense"),
     ]
 
     familyId = models.CharField(max_length=50)
     userId = models.CharField(max_length=50)
-    type = models.CharField(max_length=7, choices=EXPENSE_TYPES)
+    type = models.CharField(max_length=7, choices=TRANSACTION_TYPES)
     category = models.CharField(max_length=100)
-    month = models.IntegerField()
-    date = models.DateField()
+    year = models.IntegerField(null=True)
+    month = models.IntegerField(blank=True, null=True)
+    day = models.IntegerField(blank=True, null=True)
     amount = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     description = models.TextField(blank=True)
-    recordType = models.CharField(max_length=20, default='expense')
+    recordType = models.CharField(max_length=20, default="transaction")
 
     def __str__(self):
-        return f"{self.type.capitalize()} - {self.category} ({self.date})"
+        return f"{self.type.capitalize()} - {self.category}"
 
-class ExpenseSummary(models.Model):
+
+class TransactionSummary(models.Model):
     familyId = models.CharField(max_length=50)
-    recordType = models.CharField(max_length=20, default='expensesummary')
+    recordType = models.CharField(max_length=20, default="transactionsummary")
     data = YearlySummaryField(default=YearlySummary)
 
     def save(self, *args, **kwargs):
@@ -57,6 +59,7 @@ class ExpenseSummary(models.Model):
 
     def __str__(self):
         return f"Summary for {self.familyId}: {self.data}"
+
 
 class Chat(models.Model):
     userId = models.CharField(max_length=50)
@@ -76,9 +79,10 @@ class Chat(models.Model):
             self.data.append(entry.to_dict())
         else:
             raise ValueError("entry must be a ChatEntry instance")
-    
+
     def save(self, *args, **kwargs):
         # Clean and save chat data as a list of dictionaries
         super().save(*args, **kwargs)
+
 
 # class Metadata(models.Model):
