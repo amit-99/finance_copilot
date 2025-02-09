@@ -1,0 +1,7 @@
+django
+python-dotenv
+twilio
+google-genai
+pillow
+djongo
+dnspython

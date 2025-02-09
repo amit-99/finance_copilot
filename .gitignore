@@ -53,3 +53,4 @@ Desktop.ini
 
 # dotenv files
 .env
+!example.env
